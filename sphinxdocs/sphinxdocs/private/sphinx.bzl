@@ -19,25 +19,10 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("//sphinxdocs/private:util.bzl", "add_tag", "copy_propagating_kwargs")  # buildifier: disable=bzl-visibility
 load(":sphinx_docs_library_info.bzl", "SphinxDocsLibraryInfo")
+load(":sphinx_source_tree_info.bzl", "SphinxSourceTreeInfo")
 
 _SPHINX_BUILD_MAIN_SRC = Label("//sphinxdocs/private:sphinx_build.py")
 _SPHINX_SERVE_MAIN_SRC = Label("//sphinxdocs/private:sphinx_server.py")
-
-_SphinxSourceTreeInfo = provider(
-    doc = "Information about source tree for Sphinx to build.",
-    fields = {
-        "source_dir_runfiles_path": """
-:type: str
-
-Runfiles-root relative path of the root directory for the source files.
-""",
-        "source_root": """
-:type: str
-
-Exec-root relative path of the root directory for the source files (which are in DefaultInfo.files)
-""",
-    },
-)
 
 _SphinxRunInfo = provider(
     doc = "Information for running the underlying Sphinx command directly",
@@ -154,7 +139,7 @@ def sphinx_docs(
 
     internal_name = "_{}".format(name.lstrip("_"))
 
-    _sphinx_source_tree(
+    sphinx_source_tree(
         name = internal_name + "/_sources",
         srcs = srcs,
         deps = deps,
@@ -203,7 +188,7 @@ def sphinx_docs(
     )
 
 def _sphinx_docs_impl(ctx):
-    source_tree_info = ctx.attr.source_tree[_SphinxSourceTreeInfo]
+    source_tree_info = ctx.attr.source_tree[SphinxSourceTreeInfo]
     source_dir_path = source_tree_info.source_root
     inputs = ctx.attr.source_tree[DefaultInfo].files
 
@@ -248,7 +233,7 @@ _sphinx_docs = rule(
         "formats": attr.string_list(doc = "Output formats for Sphinx to create."),
         "source_tree": attr.label(
             doc = "Directory of files for Sphinx to process.",
-            providers = [_SphinxSourceTreeInfo],
+            providers = [SphinxSourceTreeInfo],
         ),
         "sphinx": attr.label(
             executable = True,
@@ -418,21 +403,39 @@ def _sphinx_source_tree_impl(ctx):
         DefaultInfo(
             files = depset(sphinx_source_files),
         ),
-        _SphinxSourceTreeInfo(
+        SphinxSourceTreeInfo(
             source_root = sphinx_source_dir_path,
             source_dir_runfiles_path = paths.dirname(source_conf_file.short_path),
         ),
     ]
 
-_sphinx_source_tree = rule(
+sphinx_source_tree = rule(
     implementation = _sphinx_source_tree_impl,
+    doc = """
+Merge doc sources into a single directory for Sphinx to read from.
+
+Sphinx only accepts a single directory to read its doc sources from, but
+plain files and generated files live in different directories. This rule
+symlinks them all into one directory, applying the `strip_prefix` and
+`prefix` values of the {obj}`sphinx_docs_library` targets in `deps`.
+
+The {obj}`sphinx_docs` macro creates such a target implicitly. Using this
+rule directly is only necessary when implementing a custom rule that
+invokes Sphinx itself; the resulting directory is described by
+{obj}`SphinxSourceTreeInfo`.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
     attrs = {
         "config": attr.label(
             allow_single_file = True,
             mandatory = True,
-            doc = "Config file for Sphinx",
+            doc = "Config file for Sphinx. It is relocated to `conf.py` " +
+                  "within the generated source directory.",
         ),
         "deps": attr.label_list(
+            doc = "{obj}`sphinx_docs_library` targets to include.",
             providers = [SphinxDocsLibraryInfo],
         ),
         "renamed_srcs": attr.label_keyed_string_dict(
@@ -564,8 +567,8 @@ def _sphinx_run_impl(ctx):
         substitutions = {
             "%SETUP_ARGS%": args_str,
             "%SETUP_ENV%": env_str,
-            "%SOURCE_DIR_EXEC_PATH%": run_info.source_tree[_SphinxSourceTreeInfo].source_root,
-            "%SOURCE_DIR_RUNFILES_PATH%": run_info.source_tree[_SphinxSourceTreeInfo].source_dir_runfiles_path,
+            "%SOURCE_DIR_EXEC_PATH%": run_info.source_tree[SphinxSourceTreeInfo].source_root,
+            "%SOURCE_DIR_RUNFILES_PATH%": run_info.source_tree[SphinxSourceTreeInfo].source_dir_runfiles_path,
             "%SPHINX_EXEC_PATH%": sphinx[DefaultInfo].files_to_run.executable.path,
             "%SPHINX_RUNFILES_PATH%": sphinx[DefaultInfo].files_to_run.executable.short_path,
         },

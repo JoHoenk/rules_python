@@ -70,10 +70,16 @@ bzl_library(
 )
 
 bzl_library(
+    name = "sphinx_source_tree_info",
+    srcs = ["sphinx_source_tree_info.bzl"],
+)
+
+bzl_library(
     name = "sphinx",
     srcs = ["sphinx.bzl"],
     deps = [
         ":sphinx_docs_library_info",
+        ":sphinx_source_tree_info",
         ":util",
         "@bazel_skylib//:bzl_library",
         "@bazel_skylib//lib:paths",
